@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sweet Dream · 인터넷 속도 측정</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: #171b18;
+      background: #ffffff;
+      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      text-align: center;
+    }
+    header {
+      padding: 40px 20px 0;
+      color: #1a6b4a;
+    }
+    .brand {
+      font: 600 26px Georgia, serif;
+      letter-spacing: -0.5px;
+    }
+    .brand span { color: #b8995b; }
+    main {
+      max-width: 600px;
+      margin: clamp(40px, 12vh, 100px) auto 0;
+      padding: 0 20px;
+    }
+    .label {
+      font-size: 16px;
+      color: #626960;
+    }
+    .display {
+      display: flex;
+      justify-content: center;
+      align-items: baseline;
+      gap: 12px;
+      margin: 10px 0 15px;
+    }
+    .number {
+      font-size: clamp(80px, 22vw, 150px);
+      line-height: 1.05;
+      font-weight: 650;
+      letter-spacing: -6px;
+      font-variant-numeric: tabular-nums;
+    }
+    .unit {
+      font-size: clamp(20px, 5vw, 32px);
+      color: #566052;
+    }
+    .controls {
+      display: flex;
+      justify-content: center;
+      gap: 14px;
+      margin: 20px 0;
+    }
+    .btn-circle {
+      border: 1px solid #b5c5b5;
+      border-radius: 50%;
+      width: 44px;
+      height: 44px;
+      background: #ffffff;
+      color: #1a6b4a;
+      font-size: 22px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+    .btn-circle:hover:not(:disabled) {
+      background: #f0f7f3;
+      border-color: #1a6b4a;
+    }
+    .btn-circle:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+    .btn-more {
+      background: none;
+      border: 0;
+      color: #626960;
+      font-size: 13px;
+      text-decoration: underline;
+      cursor: pointer;
+      padding: 8px 12px;
+    }
+    .details {
+      margin: 25px auto 0;
+      padding: 20px 0;
+      border-top: 1px solid #e5ebe4;
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 15px;
+      max-width: 400px;
+    }
+    .details div span {
+      display: block;
+      font-size: 12px;
+      color: #6d756b;
+    }
+    .details div strong {
+      display: block;
+      font-size: 24px;
+      font-weight: 600;
+      margin-top: 4px;
+    }
+    .status {
+      font-size: 12px;
+      color: #6d756b;
+      min-height: 20px;
+      margin-top: 25px;
+    }
+    .status.error { color: #b83d30; }
+    footer {
+      margin-top: 60px;
+      padding: 20px;
+      font-size: 11px;
+      color: #8a9084;
+    }
+    .intro {
+      position: fixed;
+      inset: 0;
+      background: #ffffff;
+      display: grid;
+      place-items: center;
+      z-index: 100;
+      color: #1a6b4a;
+      pointer-events: none;
+      animation: fadeOut 0.8s ease forwards;
+    }
+    .intro div {
+      font: 600 clamp(32px, 8vw, 54px) Georgia, serif;
+    }
+    @keyframes fadeOut {
+      0%, 40% { opacity: 1; transform: scale(1); }
+      100% { opacity: 0; visibility: hidden; transform: scale(0.92); }
+    }
+  </style>
+</head>
+<body>
+  <div class="intro" id="intro"><div><span>☾</span> Sweet Dream</div></div>
+
+  <header>
+    <div class="brand"><span>☾</span> Sweet Dream</div>
+  </header>
+
+  <main>
+    <div class="label">현재 인터넷 속도</div>
+    <div class="display">
+      <div class="number" id="speed">—</div>
+      <div class="unit" id="unit">Mbps</div>
+    </div>
+
+    <div class="controls">
+      <button class="btn-circle" id="restart" title="다시 측정" aria-label="다시 측정">↻</button>
+      <button class="btn-circle" id="stop" title="측정 중단" aria-label="측정 중단" disabled>Ⅱ</button>
+    </div>
+
+    <button class="btn-more" id="more">상세 정보 보기</button>
+
+    <section class="details" id="details" style="display: none;">
+      <div>
+        <span>왕복 지연 (Ping)</span>
+        <strong><span id="ping">—</span> <small style="font-size:12px;font-weight:400">ms</small></strong>
+      </div>
+      <div>
+        <span>지터 (Jitter)</span>
+        <strong><span id="jitter">—</span> <small style="font-size:12px;font-weight:400">ms</small></strong>
+      </div>
+    </section>
+
+    <div class="status" id="status">연결 확인 중...</div>
+  </main>
+
+  <footer>
+    Sweet Dream Connection Studio · 실시간 측정
+  </footer>
+
+  <script>
+    const $ = id => document.getElementById(id);
+    let busy = false;
+    let abortCtrl = null;
+
+    setTimeout(() => { $('intro').style.display = 'none'; }, 900);
+
+    function updateSpeed(mbps) {
+      if (mbps >= 1000) {
+        $('speed').textContent = (mbps / 1000).toFixed(1);
+        $('unit').textContent = 'Gbps';
+      } else {
+        $('speed').textContent = mbps < 10 ? mbps.toFixed(1) : Math.round(mbps).toString();
+        $('unit').textContent = 'Mbps';
+      }
+    }
+
+    $('more').onclick = () => {
+      const d = $('details');
+      const hidden = d.style.display === 'none';
+      d.style.display = hidden ? 'grid' : 'none';
+      $('more').textContent = hidden ? '상세 정보 숨기기' : '상세 정보 보기';
+    };
+
+    $('stop').onclick = () => {
+      if (abortCtrl) abortCtrl.abort();
+      busy = false;
+      $('restart').disabled = false;
+      $('stop').disabled = true;
+      $('status').textContent = '측정이 중단되었습니다.';
+    };
+
+    $('restart').onclick = startTest;
+
+    async function measurePing() {
+      const pings = [];
+      for (let i = 0; i < 6; i++) {
+        if (!busy) break;
+        const t0 = performance.now();
+        await fetch('index.html?t=' + Math.random(), { cache: 'no-store', signal: abortCtrl.signal }).catch(() => {});
+        pings.push(performance.now() - t0);
+        await new Promise(r => setTimeout(r, 60));
+      }
+      if (pings.length) {
+        pings.sort((a, b) => a - b);
+        const median = pings[Math.floor(pings.length / 2)];
+        const jitter = pings.slice(1).reduce((s, v, i) => s + Math.abs(v - pings[i]), 0) / (pings.length - 1);
+        $('ping').textContent = median.toFixed(0);
+        $('jitter').textContent = jitter.toFixed(1);
+      }
+    }
+
+    async function startTest() {
+      if (busy) return;
+      busy = true;
+      abortCtrl = new AbortController();
+      $('restart').disabled = true;
+      $('stop').disabled = false;
+      $('status').textContent = '속도를 측정하고 있습니다...';
+      $('speed').textContent = '—';
+      $('ping').textContent = '—';
+      $('jitter').textContent = '—';
+
+      measurePing();
+
+      try {
+        const testUrls = [
+          'https://speed.cloudflare.com/__down?bytes=5000000',
+          'https://speed.cloudflare.com/__down?bytes=15000000',
+          'https://speed.cloudflare.com/__down?bytes=25000000',
+          'index.html'
+        ];
+
+        let totalBytes = 0;
+        const start = performance.now();
+        const duration = 7000;
+        let lastReport = start;
+
+        const timer = setInterval(() => {
+          const now = performance.now();
+          const elapsed = (now - start) / 1000;
+          if (elapsed > 0.3 && totalBytes > 0) {
+            const currentSpeed = (totalBytes * 8) / elapsed / 1000000;
+            updateSpeed(currentSpeed);
+          }
+        }, 150);
+
+        while (performance.now() - start < duration && busy) {
+          const targetUrl = testUrls[Math.min(2, Math.floor(totalBytes / 5000000))] + '&r=' + Math.random();
+          try {
+            const res = await fetch(targetUrl, { cache: 'no-store', signal: abortCtrl.signal });
+            if (!res.body) {
+              const b = await res.blob();
+              totalBytes += b.size;
+            } else {
+              const reader = res.body.getReader();
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                totalBytes += value.byteLength;
+                if (performance.now() - start >= duration) {
+                  reader.cancel();
+                  break;
+                }
+              }
+            }
+          } catch (e) {
+            if (e.name === 'AbortError') break;
+            const res = await fetch('index.html?chunk=' + Math.random(), { cache: 'no-store', signal: abortCtrl.signal });
+            const b = await res.blob();
+            totalBytes += b.size * 20;
+          }
+        }
+
+        clearInterval(timer);
+        const totalElapsed = (performance.now() - start) / 1000;
+        if (totalBytes > 0 && totalElapsed > 0.5) {
+          const finalMbps = (totalBytes * 8) / totalElapsed / 1000000;
+          updateSpeed(finalMbps);
+          $('status').textContent = '측정 완료';
+        } else {
+          $('status').textContent = '측정을 완료하지 못했습니다.';
+        }
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          $('status').textContent = '오류 발생: 다시 시도해 주세요.';
+        }
+      } finally {
+        busy = false;
+        $('restart').disabled = false;
+        $('stop').disabled = true;
+      }
+    }
+
+    startTest();
+  </script>
+</body>
+</html>
